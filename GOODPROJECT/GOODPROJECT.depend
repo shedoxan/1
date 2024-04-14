@@ -1,0 +1,22 @@
+# depslib dependency file v1.0
+1713049193 source:c:\goodproject\main.c
+	"lodepng.c"
+	<math.h>
+	<stdio.h>
+	<stdlib.h>
+	<stdbool.h>
+
+1713033907 c:\goodproject\lodepng.c
+	"lodepng.h"
+	<limits.h>
+	<stdio.h>
+	<stdlib.h>
+
+1713033908 c:\goodproject\lodepng.h
+	<string.h>
+	<vector>
+	<string>
+	"lodepng.h"
+	<iostream>
+	"lodepng.h"
+
