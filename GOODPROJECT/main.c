@@ -3,10 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-void gaussianBlur(unsigned char* image, unsigned char* blurred, int radius, unsigned image_width, unsigned image_height) {
-    float sigma=(float)radius/3.0f;
+void gaussianBlur(unsigned char* image, unsigned char* blurred, int radius, float sigma, unsigned image_width, unsigned image_height){
     int kernel_size=2*radius+1;
-    float* kernel=(float*)malloc(kernel_size * kernel_size * sizeof(float));
+    float* kernel=(float*)malloc(kernel_size*kernel_size*sizeof(float));
     float kernel_sum=0.0f;
     for (int i=-radius;i<=radius;i++){
         for (int j=-radius;j<=radius;j++){
@@ -90,9 +89,9 @@ void applySobelOperator(unsigned char* image, unsigned width, unsigned height){
             int idx=(y*width+x)*4;
             float gradient=sqrt(pow(gx,2)+pow(gy,2));
             for (int k=0;k<3;k++){
-                edge_image[idx+k]=(gradient>7)?150:image[idx+k];
-                edge_image[idx+k]=(gradient>14)?255:image[idx+k];
+                edge_image[idx+k]=(gradient>50)?255:image[idx+k];
             }
+            edge_image[idx+3]=255;
         }
     }
     for (int i=0;i<height*width*4;i++){
@@ -100,12 +99,117 @@ void applySobelOperator(unsigned char* image, unsigned width, unsigned height){
     }
     free(edge_image);
 }
+void hysteresisThresholding(unsigned char* edge_image, int x, int y, unsigned width, unsigned height){
+    for (int i=-1;i<=1;i++){
+        for(int j=-1;j<=1;j++){
+            int nx=x+i;
+            int ny=y+j;
+            if(nx>=0 && nx<width && ny>=0 && ny<height){
+                int idx=4*(ny*width+nx);
+                for(int k=0;k<3;k++){
+                     if (edge_image[idx+k]==100){
+                        edge_image[idx+k]=255;
+                        hysteresisThresholding(edge_image,nx,ny,width,height);
+                    }
+                }
+
+            }
+        }
+    }
+}
+void detectorCanny(unsigned char* image, unsigned width, unsigned height,unsigned upper_threshold,unsigned lower_threshold){
+    unsigned char* edge_image=calloc(width*height*4,sizeof(unsigned char));
+    unsigned char* gradient=calloc(width*height*4,sizeof(unsigned char));
+    unsigned char* edge_direction=calloc(width*height*4,sizeof(unsigned char));
+    int sobel_horizontal[3][3]={
+        {-1,0,1},
+        {-2,0,2},
+        {-1,0,1}
+    };
+    int sobel_vertical[3][3]={
+        {-1,-2,-1},
+        {0,0,0},
+        {1,2,1}
+    };
+    for (int y=1;y<height-1;y++){
+        for (int x=1;x<width-1;x++){
+            int gx=0, gy=0;
+            for (int i=-1;i<=1;i++){
+                for (int j=-1;j<=1;j++){
+                    int idx=((y+i)*width+(x+j))*4;
+                    gx+=image[idx]*sobel_horizontal[i+1][j+1];
+                    gy+=image[idx]*sobel_vertical[i+1][j+1];
+                }
+            }
+            int idx=4*(y*width+x);
+            float grad=sqrt(pow(gx,2)+pow(gy,2));
+            float arctan=atan2(gy,gx);
+            for (int k=0;k<3;k++){
+                gradient[idx+k]=grad;
+                edge_direction[idx+k]=arctan;
+            }
+        }
+    }
+    for (int y=1;y<height-1;y++){
+        for (int x=1;x<width-1;x++){
+            int dx=0,dy=0;
+            int idx=4*(y*width+x);
+            int value=gradient[idx];
+            if (edge_direction[idx]<22.5 || edge_direction[idx]>=157.5){
+                dx=1;
+                dy=0;
+            }else if (edge_direction[idx]>=22.5 && edge_direction[idx]<67.5){
+                dx=1;
+                dy=-1;
+            }else if (edge_direction[idx]>67.5 && edge_direction[idx]<112.5){
+                dx=0;
+                dy=-1;
+            }else{
+                dx=-1;
+                dy=-1;
+            }
+            int val1=gradient[(y+dy)*width+(x+dx)];
+            int val2=gradient[(y-dy)*width+(x-dx)];
+            for (int k=0;k<3;k++){
+                if (value>=val1 && value>=val2){
+                edge_image[idx+k]=value;
+                }else{
+                    edge_image[idx+k]=0;
+                }
+                if (gradient[idx+k]>=upper_threshold){
+                    edge_image[idx+k]=255;
+                }else if (gradient[idx+k]>=lower_threshold){
+                    edge_image[idx+k]=100;
+                }else{
+                    edge_image[idx+k]=0;
+                }
+            }
+            edge_image[idx+3]=255;
+        }
+    }
+    for (int y=1;y<height-1;y++){
+        for (int x=1;x<width-1;x++){
+            int idx=4*(y*width+x);
+            if(edge_image[idx]==255){
+                hysteresisThresholding(edge_image,x,y,width,height);
+            }
+        }
+    }
+    for (int i=0;i<height*width*4;i++){
+        image[i]=edge_image[i];
+    }
+    free(gradient);
+    free(edge_direction);
+    free(edge_image);
+}
 unsigned char* convert_to_grayscale(unsigned char* image, unsigned size) {
     unsigned char* bw_image=malloc(size*sizeof(unsigned char));
     for (unsigned i=0;i<size;i+=4) {
         unsigned char gray=(image[i]+image[i+1]+image[i+2])/3;
+        gray=(gray<=255)?gray:255;
         bw_image[i]=bw_image[i+1]=bw_image[i+2]=gray;
         bw_image[i+3]=255;
+
     }
     return bw_image;
 }
@@ -180,15 +284,14 @@ int main(){
     unsigned error=lodepng_decode32_file(&image, &w, &h, filename);
     unsigned char* bw_image=convert_to_grayscale(image,4*w*h);
     unsigned char* blurred_image=malloc(4*w*h*sizeof(unsigned char));
-    gaussianBlur(bw_image, blurred_image,5,w,h);
-    applySobelOperator(blurred_image,w,h);
+    gaussianBlur(bw_image, blurred_image,4,2,w,h);
+    detectorCanny(blurred_image,w,h,17,15);
+//    applySobelOperator(bw_image,w,h);
 //    applyRobertsOperator(bw_image,w,h);
-    unsigned error1 = lodepng_encode32_file("output1.png", blurred_image, w, h);
-
+    unsigned error1=lodepng_encode32_file("output1.png",blurred_image, w, h);
     int V=h*w;
     struct Set* sets=malloc(V*sizeof(Set));
     for (int i=0;i<V;i++) Make_Set(sets,i);
-
     unsigned char* image1=calloc(4*w*h,sizeof(unsigned char));
     unsigned char delta=2;
     unsigned char R=0;
