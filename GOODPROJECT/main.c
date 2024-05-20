@@ -284,8 +284,8 @@ int main(){
     unsigned error=lodepng_decode32_file(&image, &w, &h, filename);
     unsigned char* bw_image=convert_to_grayscale(image,4*w*h);
     unsigned char* blurred_image=malloc(4*w*h*sizeof(unsigned char));
-    gaussianBlur(bw_image, blurred_image,4,2,w,h);
-    detectorCanny(blurred_image,w,h,17,15);
+    gaussianBlur(bw_image, blurred_image,4,2.1,w,h);
+    detectorCanny(blurred_image,w,h,20,14);
 //    applySobelOperator(bw_image,w,h);
 //    applyRobertsOperator(bw_image,w,h);
     unsigned error1=lodepng_encode32_file("output1.png",blurred_image, w, h);
@@ -293,7 +293,7 @@ int main(){
     struct Set* sets=malloc(V*sizeof(Set));
     for (int i=0;i<V;i++) Make_Set(sets,i);
     unsigned char* image1=calloc(4*w*h,sizeof(unsigned char));
-    unsigned char delta=2;
+    unsigned char delta=13;
     unsigned char R=0;
     unsigned char G=0;
     unsigned char B=0;
